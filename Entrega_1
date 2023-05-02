@@ -1,0 +1,250 @@
+#### C�digo Trabajo An�lisis de Muestras - 1� Parte ####
+
+##############################################################################################################
+
+### Generaci�n de datos ###
+
+if (!require("sae")) install.packages("sae")
+library("sae")
+
+NIU=100452943
+set.seed(NIU)
+cual = sample(1:17,1)
+
+data(incomedata)
+datosECV = incomedata
+datos16 = subset(datosECV, (datosECV$labor>0))
+datos16$age = datos16$age - 1
+nrows = dim(datos16)[[1]]
+datos16$horas = round(rnorm(nrows,34,3), 1)
+datos16$horas[(datos16$labor==2) | (datos16$labor == 3)] = 0
+datos16$income = round(jitter(datos16$income),1)
+datos16$income[datos16$labor==2] = datos16$income[datos16$labor==2]*0.7
+datos16$income[datos16$labor==3] = 0
+datosFinal = data.frame(ca=datos16$ac, prov=datos16$prov, 
+                        provlab=datos16$provlab, gen=datos16$gen, 
+                        edad=datos16$age, nac=datos16$nat, 
+                        neduc=datos16$educ, sitemp=datos16$labor, 
+                        ingnorm=datos16$income, horas=datos16$horas,
+                        factorel=round(datos16$weight,1))
+
+datos_CastillaLaMancha = datosFinal[datosFinal[,1]==8,]
+write.table(datos_CastillaLaMancha,"datos_CastillaLaMancha.txt",row.names=FALSE)
+
+datos=datos_CastillaLaMancha
+
+
+##############################################################################################################
+
+
+### Nombres de categor�as ###
+
+names_prov = c("Albacete", "Ciudad Real", "Cuenca","Guadalajara","Toledo")
+names_gen = c("Hombre", "Mujer")
+names_edad = c("16-24 a�os", "25-49 a�os", "50-64 a�os","Mayor o igual a 65 a�os")
+names_nac = c("Espa�ola", "Otra")
+names_neduc = c("Primaria", "Secundaria", "Postsecundaria")
+names_sitemp = c("Trabaja", "Desempleado", "Inactivo")
+
+label_prov = "Provincia"
+label_gen = "Sexo"
+label_edad = "Rango de edad"
+label_nac = "Nacionalidad"
+label_neduc = "Nivel educativo"
+label_sitemp = "Situaci�n de empleo"
+
+
+##############################################################################################################
+
+
+### Funciones de an�lisis de variables cualitativas ###
+  
+tabla_frecuencias <- function(x, names=c()) {
+  M=matrix(NA, nrow = length(unique(x)), ncol=5)
+  colnames(M) = c("xi", "ni", "fi", "Ni", "Fi")
+  rownames(M) = names
+  M[, 1] = sort(unique(x))
+  M[, 2] = table(x)
+  M[, 3] = M[, 2]/length(x)
+  M[, 4] = cumsum(M[, 2])
+  M[, 5] = cumsum(M[, 3])
+  return(M)
+}
+
+diagrama_barras <- function(x, names=c(), xlab=c(), ylab=c(), main=c()) {
+  T = table(x)
+  names(T) = names
+  barplot(T, xlab = xlab, ylab = ylab, main = main) 
+}
+
+grafico_mosaico <- function(x, y, names_x = c(), names_y = c(), xlab = c(), ylab = c(), main = c(), col = c()) {
+  T = table(x, y)
+  rownames(T) = names_x
+  colnames(T) = names_y
+  mosaicplot(T, xlab = xlab, ylab = ylab, main = main, col = col)
+}
+
+tablas_contingencia <- function(x, y, names_x = c(), names_y = c()) {
+  T1 = table(x, y)
+  T1 = cbind(T1, rowSums(T1))
+  T1 = rbind(T1, colSums(T1))
+  rownames(T1) = c(names_x, "Total")
+  colnames(T1) = c(names_y, "Total")
+  T2 = T1/T1[, 4]
+  T2[, 4] = T1[, 4]/max(T1[, 4])
+  print(T1)
+  return(T2)
+}
+
+
+##############################################################################################################
+
+
+### Funciones de an�lisis de variables cuantitativas ###
+
+intervalos_sturges <- function(x, cantidad = NULL) {
+  if (is.null(cantidad) == TRUE) {
+    cantidad = ceiling(1 + log(length(x))/log(2))
+  }
+  longitud = ceiling((max(x)-min(x))/cantidad)
+  intervalos = seq(from = floor(min(x)), to = floor(min(x)) + longitud*cantidad, by = longitud)
+  return(intervalos)
+}
+
+tabla_frecuencias_intervalos <- function(x, intervalos) {
+  M = matrix(NA, nrow = length(intervalos) - 1, ncol = 6)
+  colnames(M) = c("L�mite inferior", "Limite superior", "ni", "fi", "Ni", "Fi")
+  M[, 1] = intervalos[1:length(intervalos) - 1]
+  M[, 2] = intervalos[2:length(intervalos)]
+  for (i in 1:nrow(M)) {
+    if (i == 1) {
+      M[i, 3] = length(which(x >= M[i, 1] & x <= M[i, 2]))
+    } else {
+      M[i, 3] = length(which(x > M[i, 1] & x <= M[i, 2]))
+    }
+  }
+  M[, 4] = M[, 3]/length(x)
+  M[, 5] = cumsum(M[, 3])
+  M[, 6] = cumsum(M[, 4])
+  return(M)
+}
+
+if (!require("moments")) install.packages("moments")
+library("moments")
+
+medidas <- function(x) {
+  v = c(mean(x), median(x), var(x), sd(x), sd(x)/abs(mean(x)), IQR(x), max(x)-min(x), skewness(x), kurtosis(x))
+  names(v) = c("Media", "Mediana", "Cuasivarianza", "Cuasidesviaci�n t�pica", "Coeficiente de variaci�n", 
+               "Rango intercuart�lico", "Recorrido", "Coeficiente de asimetr�a", "Coeficiente de curtosis")
+  return(v)
+}
+
+##############################################################################################################
+
+
+## Tablas y figuras de variables cualitativas ##
+
+tabla_frecuencias(datos$prov, names_prov)
+diagrama_barras(datos$prov, names_prov, label_prov, "Frecuencias absolutas", "N�mero de muestras por provincias")
+
+tabla_frecuencias(datos$gen, names_gen)
+diagrama_barras(datos$gen, names_gen, label_gen, "Frecuencias absolutas", "N�mero de muestras por sexo")
+
+tabla_frecuencias(datos$edad, names_edad)
+diagrama_barras(datos$edad, names_edad, label_edad, "Frecuencias absolutas", "N�mero de muestras por edad")
+
+tabla_frecuencias(datos$nac, names_nac)
+diagrama_barras(datos$nac, names_nac, label_nac, "Frecuencias absolutas", "N�mero de muestras por nacionalidad")
+
+tabla_frecuencias(datos$neduc, names_neduc)
+diagrama_barras(datos$neduc, names_neduc, label_neduc, "Frecuencias absolutas", "N�mero de muestras por nivel educativo")
+
+tabla_frecuencias(datos$sitemp, names_sitemp)
+diagrama_barras(datos$sitemp, names_sitemp, label_sitemp, "Frecuencias absolutas", "N�mero de muestras por situaci�n de empleo")
+
+
+col = c("brown1", "limegreen", "dodgerblue")
+
+grafico_mosaico(datos$edad, datos$neduc, names_edad, names_neduc, label_edad,
+                label_neduc, "Relaciones entre rangos de edad y niveles educativos", col)
+
+grafico_mosaico(datos$edad, datos$sitemp, names_edad, names_sitemp, label_edad,
+                label_sitemp, "Relaciones entre rangos de edad y situaciones de empleo", col)
+
+grafico_mosaico(datos$neduc, datos$sitemp, names_neduc, names_sitemp, label_neduc,
+                label_sitemp, "Relaciones entre niveles educativos y situaciones de empleo", col)
+
+tablas_contingencia(datos$prov, datos$sitemp, names_prov, names_sitemp)
+
+
+##############################################################################################################
+
+
+## Tablas y figuras de la variable ingresos ##
+
+ingresos = datos[which(datos$sitemp == 1), 9]
+
+intervalos_sturges(ingresos)
+
+tabla_frecuencias_intervalos(ingresos, intervalos_sturges(ingresos))
+
+medidas(ingresos)
+
+hist(ingresos, breaks = intervalos_sturges(ingresos), xlab = "Ingresos (euros)", ylab = "Frecuencia absoluta", main = "Histograma de ingresos")
+
+qqnorm(ingresos, main = "Gr�fico Q-Q Normal - Ingresos", xlab = "Cuantiles Te�ricos", ylab = "Cuantiles Muestrales")
+qqline(ingresos)
+
+boxplot(ingresos, xlab = "Ingresos", ylab = "Euros", main = "Diagrama de caja de ingresos")
+
+
+##############################################################################################################
+
+
+## Tablas y figuras de la variable ingresos condicionada al nivel educativo ##
+
+ing_1 = datos[which(datos$sitemp == 1 & datos$neduc == 1), 9]
+ing_2 = datos[which(datos$sitemp == 1 & datos$neduc == 2), 9]
+ing_3 = datos[which(datos$sitemp == 1 & datos$neduc == 3), 9]
+
+
+intervalos = intervalos_sturges(ingresos,  cantidad = length(intervalos_sturges(ing_3))-1)
+intervalos
+
+
+tabla_completa = cbind(cbind(tabla_frecuencias_intervalos(ing_1, intervalos), 
+                             tabla_frecuencias_intervalos(ing_2, intervalos)[, 3:6]), 
+                             tabla_frecuencias_intervalos(ing_3, intervalos)[, 3:6])
+tabla_completa
+
+
+medidas(ing_1)
+medidas(ing_2)
+medidas(ing_3)
+
+
+hist(ing_1, breaks = intervalos, xlab = "Ingresos (euros)", ylab = "Frecuencia absoluta",
+     main = "Histograma de ingresos de empleados con eduaci�n primaria")
+
+hist(ing_2, breaks = intervalos, xlab = "Ingresos (euros)", ylab = "Frecuencia absoluta",
+     main = "Histograma de ingresos de empleados con eduaci�n secundaria")
+
+hist(ing_3, breaks = intervalos, xlab = "Ingresos (euros)", ylab = "Frecuencia absoluta",
+     main = "Histograma de ingresos de empleados con eduaci�n postsecundaria")
+
+
+qqnorm(ing_1, main = "Gr�fico Q-Q Normal - Ingresos de empleados con eduaci�n primaria", xlab = "Cuantiles Te�ricos", ylab = "Cuantiles Muestrales")
+qqline(ing_1)
+
+qqnorm(ing_2, main = "Gr�fico Q-Q Normal - Ingresos de empleados con eduaci�n secundaria", xlab = "Cuantiles Te�ricos", ylab = "Cuantiles Muestrales")
+qqline(ing_2)
+
+qqnorm(ing_3, main = "Gr�fico Q-Q Normal - Ingresos de empleados con eduaci�n postsecundaria", xlab = "Cuantiles Te�ricos", ylab = "Cuantiles Muestrales")
+qqline(ing_3)
+
+
+df = data.frame(values = c(ing_1, ing_2, ing_3), vars = rep(c(names_neduc[1], names_neduc[2], names_neduc[3]), times = c(length(ing_1), length(ing_2), length(ing_3))))
+df$vars = factor(df$vars ,  levels = c(names_neduc[1], names_neduc[2], names_neduc[3]))
+boxplot(df$values ~ df$vars, xlab = "Nivel educativo", ylab = "Ingresos (Euros)", main = "Diagramas de caja de ingresos por nivel educativo")
+
+##############################################################################################################
